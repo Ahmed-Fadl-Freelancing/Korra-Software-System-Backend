@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 60
+
+  celery:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - redis
+    command: celery -A core worker --loglevel=info
