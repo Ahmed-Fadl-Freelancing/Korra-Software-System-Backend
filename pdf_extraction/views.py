@@ -10,6 +10,7 @@ GET    /pdf-extraction/jobs/<id>/    – poll the status of an existing job.
 """
 import logging
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -96,7 +97,11 @@ class PdfExtractionJobDetailView(APIView):
                 "opportunity_id": str(job.opportunity_id),
                 "status": job.status,
                 "result": job.result,
-                "error": job.error or None,
+                # Only expose the raw error string in DEBUG mode to avoid
+                # leaking internal implementation details to API clients.
+                "error": (job.error or None) if settings.DEBUG else (
+                    "Extraction failed." if job.error else None
+                ),
                 "created_at": job.created_at.isoformat(),
                 "updated_at": job.updated_at.isoformat(),
             }
