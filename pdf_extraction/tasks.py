@@ -14,11 +14,14 @@ Triggered by: the ``documents`` app (or any other app) after a PDF has been
 Retry policy
 ------------
 The task retries up to 3 times with a 60-second back-off before giving up and
-marking the job as failed.
+marking the job as failed.  Celery enforces the cap via ``max_retries``; the
+``MaxRetriesExceededError`` is caught to perform a clean DB update instead of
+letting the exception propagate.
 """
 import logging
 
 from celery import shared_task
+from celery.exceptions import MaxRetriesExceededError
 
 from .models import PdfExtractionJob
 from .services import PdfExtractionError, fetch_pdf, parse_pdf, persist_result
@@ -76,18 +79,29 @@ def extract_pdf(self, job_id: int):
         logger.warning(
             "pdf_extraction.extract failed (attempt %s/%s): job_id=%s error=%s",
             self.request.retries + 1,
-            _MAX_RETRIES,
+            _MAX_RETRIES + 1,
             job_id,
             exc,
         )
-        if self.request.retries < _MAX_RETRIES:
+        try:
+            # Let Celery enforce max_retries; raises MaxRetriesExceededError
+            # when the cap is reached so we handle it cleanly below.
             raise self.retry(exc=exc, countdown=_RETRY_COUNTDOWN)
+        except MaxRetriesExceededError:
+            pass  # fall through to mark the job as failed
 
-        # All retries exhausted – mark the job as failed.
+        # All retries exhausted – persist failure status in the DB.
+        # The raw exception string is stored only internally (never sent to
+        # API clients) so that internal diagnostics remain possible.
+        logger.error(
+            "pdf_extraction.extract exhausted retries: job_id=%s error=%s",
+            job_id,
+            exc,
+        )
         job.status = PdfExtractionJob.Status.FAILED
         job.error = str(exc)
         job.save(update_fields=["status", "error", "updated_at"])
-        return {"status": "failed", "job_id": job_id, "error": str(exc)}
+        return {"status": "failed", "job_id": job_id}
 
     logger.info("pdf_extraction.extract completed: job_id=%s", job_id)
     return {"status": "done", "job_id": job_id}
