@@ -84,9 +84,9 @@ def extract_pdf(self, job_id: int):
             exc,
         )
         try:
-            # Let Celery enforce max_retries; raises MaxRetriesExceededError
-            # when the cap is reached so we handle it cleanly below.
-            raise self.retry(exc=exc, countdown=_RETRY_COUNTDOWN)
+            # self.retry() raises Retry (to reschedule) or MaxRetriesExceededError
+            # when the cap is reached; catch the latter to do a clean DB update.
+            self.retry(exc=exc, countdown=_RETRY_COUNTDOWN)
         except MaxRetriesExceededError:
             pass  # fall through to mark the job as failed
 

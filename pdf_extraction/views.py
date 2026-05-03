@@ -75,10 +75,6 @@ class PdfExtractionJobDetailView(APIView):
 
     Poll the current status and result of an extraction job.
 
-    The ``error`` field in the response is a boolean indicating whether the
-    job failed; the raw error message is kept internally in the DB only and
-    is never exposed to API clients.
-
     Returns
     -------
     200 : ``{"job_id": <int>, "status": "...", "result": {...}, "failed": bool}``
