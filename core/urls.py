@@ -14,4 +14,5 @@ urlpatterns = [
     path("opportunities", include("opportunities.urls")),
     path("documents/", include("documents.urls")),
     path("webhooks/", include("rpa.urls")),
+    path("pdf-extraction/", include("pdf_extraction.urls")),
 ]

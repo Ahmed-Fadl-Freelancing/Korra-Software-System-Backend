@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "documents",
     "opportunities",
     "rpa",
+    "pdf_extraction",
 ]
 
 MIDDLEWARE = [

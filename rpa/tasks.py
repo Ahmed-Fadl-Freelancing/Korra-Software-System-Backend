@@ -1,6 +1,14 @@
 """
 Celery tasks for the RPA / UiPath integration.
 
+Responsibilities
+----------------
+- ``pricing_generate`` – render a pricing offer PDF for an opportunity.
+- ``uipath_trigger``   – submit a job to UiPath Orchestrator.
+
+PDF data extraction has its own app: ``pdf_extraction``.
+See ``pdf_extraction/tasks.py`` for the ``pdf_extraction.extract`` task.
+
 All tasks are currently stubbed – they log and will later update the DB
 once the opportunities schema is finalised.
 """
@@ -9,25 +17,6 @@ import logging
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
-
-
-@shared_task(bind=True, name="rpa.pdf_extract")
-def pdf_extract(self, opportunity_id: str):
-    """
-    Extract data from a PDF document for the given opportunity.
-
-    Steps (stubbed):
-      1. Fetch PDF from Supabase Storage
-      2. Run extraction logic
-      3. Update opportunity record in DB
-    """
-    logger.info(
-        "pdf_extract task started for opportunity_id=%s (task_id=%s)",
-        opportunity_id,
-        self.request.id,
-    )
-    # TODO: implement extraction logic
-    return {"status": "stubbed", "opportunity_id": opportunity_id}
 
 
 @shared_task(bind=True, name="rpa.pricing_generate")
