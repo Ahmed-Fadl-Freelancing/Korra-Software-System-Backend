@@ -9,7 +9,7 @@
 >
 > Linear: Team **Korrra** (key `KOR`). One PR **per feature (milestone group)**, never per issue.
 > Branch convention (new work): **`feat/<Name>`** (e.g. `feat/Auth`).
-> Last updated: 2026-06-04
+> Last updated: 2026-06-04 — KOR-113–116 created in Linear, status: In Review (PR #2 open)
 
 ---
 
@@ -17,7 +17,7 @@
 
 | Repo | Issue | Title | Branch | Status |
 |------|-------|-------|--------|--------|
-| **[BE]** | **KOR-107** | Auth session endpoints — signup / login / logout / refresh (Supabase proxy) | `feat/Auth` | 🔧 In Progress |
+| **[BE]** | **KOR-113–116** | Auth session endpoints — signup / login / logout / refresh (Supabase proxy) | `feat/Auth` | 🔧 In Review (PR #2) |
 | [FE] | KOR-5x | Wire login/signup forms to backend `/auth/*` (replace direct Supabase calls if desired) | `feat/Auth` | 🔲 Todo — confirm ID in FE repo |
 
 > ℹ️ Frontend issue IDs below come from the handover docs (`BACKEND_HANDOVER.md`)
@@ -35,10 +35,10 @@
 | [BE] | KOR-83 | `SupabaseJWTAuthentication` — local HS256 verify with `SUPABASE_JWT_SECRET` | ✅ Done |
 | [BE] | KOR-84 | `GET /me` — profile + department + roles | ✅ Done |
 | [BE] | KOR-85 | `GET /health` — liveness probe | ✅ Done |
-| [BE] | **KOR-107** | `POST /auth/signup` — proxy to Supabase Auth | 🔧 In Progress |
-| [BE] | **KOR-108** | `POST /auth/login` — password grant, relays Supabase tokens | 🔧 In Progress |
-| [BE] | **KOR-109** | `POST /auth/logout` — revoke Supabase session | 🔧 In Progress |
-| [BE] | **KOR-110** | `POST /auth/refresh` — refresh-token grant | 🔧 In Progress |
+| [BE] | KOR-113 | `POST /auth/signup` — proxy to Supabase Auth | 🔧 In Review (PR #2) |
+| [BE] | KOR-114 | `POST /auth/login` — password grant, relays Supabase tokens | 🔧 In Review (PR #2) |
+| [BE] | KOR-115 | `POST /auth/logout` — revoke Supabase session | 🔧 In Review (PR #2) |
+| [BE] | KOR-116 | `POST /auth/refresh` — refresh-token grant | 🔧 In Review (PR #2) |
 | [FE] | KOR-53 | Auth foundation — Supabase JWT, `AuthContext`, `/me` hydration | ✅ Done (per handover) |
 | [FE] | KOR-54 | App layout support | 🔲 Todo (per handover) |
 

@@ -131,13 +131,13 @@ Supabase Auth (GoTrue) proxy — Django relays Supabase-issued tokens; it never 
 
 | Issue | Title | State |
 |-------|-------|-------|
-| KOR-107 | POST /auth/signup — proxy to Supabase Auth | 🔧 In Progress |
-| KOR-108 | POST /auth/login — password grant, relay tokens | 🔧 In Progress |
-| KOR-109 | POST /auth/logout — revoke Supabase session | 🔧 In Progress |
-| KOR-110 | POST /auth/refresh — refresh-token grant | 🔧 In Progress |
+| KOR-113 | POST /auth/signup — proxy to Supabase Auth | 🔧 In Review |
+| KOR-114 | POST /auth/login — password grant, relay tokens | 🔧 In Review |
+| KOR-115 | POST /auth/logout — revoke Supabase session | 🔧 In Review |
+| KOR-116 | POST /auth/refresh — refresh-token grant | 🔧 In Review |
 
 > Also fixes the \`user_profiles\` PK mapping (column is \`user_id\`, not \`id\`) that \`/me\` depends on.
-> ⚠️ KOR-107–110 are placeholder ids — create the real issues in Linear (Team Korrra) and update here.
+> Linear issues created 2026-06-04. PR #2 open — waiting for human merge.
 
 ---
 
@@ -148,7 +148,7 @@ Supabase Auth (GoTrue) proxy — Django relays Supabase-issued tokens; it never 
 | Feature | Branch | Issues | Status |
 |---------|--------|--------|--------|
 | 1 Auth Foundation | \`feature/auth-foundation\` | KOR-83–85 | ✅ Done |
-| 8 Auth Session Endpoints | \`feat/Auth\` | KOR-107–110 | 🔧 In Progress |
+| 8 Auth Session Endpoints | \`feat/Auth\` | KOR-113–116 | 🔧 In Review (PR #2) |
 | 2 Document Storage | \`feature/document-storage\` | KOR-86–87 | ✅ Done |
 | 3 PDF Extraction | \`feature/pdf-extraction\` | KOR-88–92 | 🔧 Todo |
 | 4 Opportunity Mgmt | \`feature/opportunity-management\` | KOR-93–96 | 📋 Backlog |
