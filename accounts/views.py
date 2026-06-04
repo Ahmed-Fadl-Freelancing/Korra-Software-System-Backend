@@ -20,14 +20,14 @@ class MeView(APIView):
             cursor.execute(
                 """
                 SELECT
-                    up.id              AS user_id,
+                    up.user_id         AS user_id,
                     up.employee_code,
                     up.full_name,
                     d.id               AS dept_id,
                     d.name             AS dept_name
                 FROM public.user_profiles up
                 LEFT JOIN public.departments d ON d.id = up.department_id
-                WHERE up.id = %s
+                WHERE up.user_id = %s
                 """,
                 [str(user_id)],
             )
