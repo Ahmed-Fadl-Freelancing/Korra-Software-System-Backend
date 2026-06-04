@@ -103,7 +103,8 @@
 | Commits | `feat(scope): description (KOR-XX)` |
 
 ## Stack
-Python 3.11+, Django 4.2, DRF 3, psycopg2, PyMuPDF (fitz), PyJWT, httpx, supabase-py, Celery + Redis, django-environ, django-cors-headers.
+Python 3.11+, Django 4.2, DRF 3.15, psycopg2-binary, PyJWT 2.9, cryptography, httpx 0.27, supabase-py 2.8, Celery 5.4 + Redis 5.1, django-environ 0.11, django-cors-headers 4.4, gunicorn 23.0.
+**New deps go in `requirements.txt` and docs update automatically.**
 
 ## Hard "Never Do" List
 - Never use Django sessions or cookies.
