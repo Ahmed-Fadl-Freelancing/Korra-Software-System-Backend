@@ -97,9 +97,20 @@ def _raise_for_status(resp: httpx.Response, *, default_status: int = 400) -> Non
 # ---------------------------------------------------------------------------
 # Public helpers
 # ---------------------------------------------------------------------------
-def sign_up(email: str, password: str) -> dict:
-    """Register a new user. Returns the GoTrue JSON (user + session if auto-confirmed)."""
-    resp = _post("signup", json={"email": email, "password": password})
+def sign_up(email: str, password: str, full_name: str = "", job_title: str = "") -> dict:
+    """Register a new user. Returns the GoTrue JSON (user + session if auto-confirmed).
+
+    full_name and job_title are stored in auth.users.raw_user_meta_data so the
+    PostgreSQL trigger can copy them into public.user_profiles on INSERT.
+    """
+    resp = _post("signup", json={
+        "email": email,
+        "password": password,
+        "data": {
+            "full_name": full_name,
+            "job_title": job_title,
+        },
+    })
     _raise_for_status(resp)
     return resp.json()
 

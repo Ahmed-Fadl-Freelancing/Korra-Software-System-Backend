@@ -42,6 +42,8 @@ class SignupView(APIView):
         data = supabase_auth.sign_up(
             serializer.validated_data["email"],
             serializer.validated_data["password"],
+            full_name=serializer.validated_data["full_name"],
+            job_title=serializer.validated_data["job_title"],
         )
         # When email confirmation is enabled, GoTrue returns the user without a
         # session (no access_token). Surface both cases plainly.

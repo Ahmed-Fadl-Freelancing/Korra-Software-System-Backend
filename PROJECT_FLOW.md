@@ -66,18 +66,22 @@ serialisers must match these exactly (case-sensitive).
 
 ### 2.1 Signup
 
-1. User fills: `email`, `password` on `/signup`.
+1. User fills: `email`, `password`, `full_name`, `job_title` on `/signup`.
 2. Frontend calls `POST /auth/signup` → Django proxies to Supabase GoTrue.
-3. Supabase creates `auth.users` record + sends confirmation email.
-4. Backend: Admin (or trigger) must manually create `public.user_profiles` record with:
+3. Django passes `full_name` + `job_title` as metadata (`data` field) to GoTrue.
+4. Supabase creates `auth.users` with metadata in `raw_user_meta_data`.
+5. **PostgreSQL trigger** fires on INSERT → auto-creates `public.user_profiles`:
    - `user_id` = `auth.users.id`
-   - `employee_code`, `full_name`, `job_title` = set by admin
-   - `department_id` = NULL (assigned by admin after email confirm)
+   - `employee_code` = `EMP-` + first 6 chars of UUID uppercased (auto-generated)
+   - `full_name` = from `raw_user_meta_data->>'full_name'`
+   - `job_title` = from `raw_user_meta_data->>'job_title'` (cast to `job_title_level` enum)
+   - `department_id` = NULL
    - `is_active` = true
-5. Frontend shows "Check your email" screen. No auto-redirect.
+6. Supabase sends confirmation email.
+7. Frontend shows "Check your email" screen. No auto-redirect.
 
-> **Admin assigns department and roles** after the user confirms email.
-> Until department is set, `GET /me` returns `department: null` (pending activation).
+> **Admin assigns `department_id` and roles** after user confirms email.
+> Until department is set, `GET /me` returns `department: null` → frontend shows `/pending`.
 
 ### 2.2 Login
 
@@ -166,17 +170,21 @@ type ProjectApplication = "Industrial" | "Commercial" | "Health" | "Residential"
 type DocumentType = "offer" | "submittal" | "rfq";
 type RoleCode = "sales_engineer" | "tech_engineer" | "manager" | "admin";
 type DepartmentName = "Sales" | "Tech Office";
+type JobTitleLevel =
+  | "Junior Engineer" | "Senior Engineer" | "Lead Engineer"
+  | "Section Head" | "Department Manager" | "General Manager"
+  | "Director" | "Board Member";
 
 interface UserProfile {
   user_id: string;
-  email: string;
   employee_code: string;
   full_name: string;
-  job_title: string | null;
-  is_active: boolean;
   department: { id: string; name: DepartmentName } | null;
   roles: RoleCode[];
 }
+
+// email is read from the JWT token, not from /me
+// job_title is stored in user_profiles but not returned by /me (not needed client-side)
 
 interface Project {
   id: string;
@@ -233,19 +241,60 @@ interface Project {
 
 ---
 
-## 6. User Profile Creation (Admin responsibility)
+## 6. Supabase SQL Setup (run once in Supabase SQL editor)
 
-When a user signs up via `/auth/signup`:
-- Supabase creates `auth.users` record.
-- Admin manually (or via backend API) creates `public.user_profiles` record with:
-  - `user_id` = auth.users.id
-  - `employee_code` = admin assigns (e.g., `EMP-ABC123`)
-  - `full_name` = admin enters
-  - `department_id` = NULL (set later)
-  - `job_title` = NULL (set later)
-  - `is_active` = true
+### Step 1 — Create `job_title_level` enum
 
-**Optional:** Automate with Supabase trigger (SQL above) — but admin still assigns `employee_code`, `full_name`, `department_id` afterward.
+```sql
+CREATE TYPE public.job_title_level AS ENUM (
+  'Junior Engineer',
+  'Senior Engineer',
+  'Lead Engineer',
+  'Section Head',
+  'Department Manager',
+  'General Manager',
+  'Director',
+  'Board Member'
+);
+```
+
+### Step 2 — Alter `user_profiles.job_title` to use enum
+
+```sql
+ALTER TABLE public.user_profiles
+  ALTER COLUMN job_title TYPE public.job_title_level
+  USING job_title::public.job_title_level;
+```
+
+### Step 3 — Create trigger to auto-create `user_profiles` on signup
+
+```sql
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  jt_value text;
+BEGIN
+  jt_value := NEW.raw_user_meta_data->>'job_title';
+
+  INSERT INTO public.user_profiles (user_id, employee_code, full_name, job_title, is_active)
+  VALUES (
+    NEW.id,
+    'EMP-' || UPPER(SUBSTRING(NEW.id::text, 1, 6)),
+    COALESCE(NEW.raw_user_meta_data->>'full_name', split_part(NEW.email, '@', 1)),
+    CASE WHEN jt_value IS NOT NULL THEN jt_value::public.job_title_level ELSE NULL END,
+    true
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+```
+
+> After signup, `department_id` and `user_roles` are assigned by admin.
+> Until then `GET /me` returns `department: null` → frontend routes to `/pending`.
 
 ---
 
