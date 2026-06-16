@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "opportunities",
     "rpa",
     "pdf_extraction",
+    "linear",
 ]
 
 MIDDLEWARE = [
@@ -84,7 +85,7 @@ WSGI_APPLICATION = "core.wsgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://postgres:postgres@localhost:5432/postgres",
+        default="sqlite:///db.sqlite3",
     )
 }
 
@@ -128,10 +129,14 @@ CORS_ALLOW_CREDENTIALS = True
 # ---------------------------------------------------------------------------
 SUPABASE_URL = env("SUPABASE_URL", default="")
 SUPABASE_JWT_SECRET = env("SUPABASE_JWT_SECRET", default="")
+SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
 
 # UiPath Orchestrator webhook shared secret (HMAC-SHA256)
 UIPATH_WEBHOOK_SECRET = env("UIPATH_WEBHOOK_SECRET", default="")
+
+# Linear project management API
+LINEAR_API_KEY = env("LINEAR_API_KEY", default="")
 
 # ---------------------------------------------------------------------------
 # Celery

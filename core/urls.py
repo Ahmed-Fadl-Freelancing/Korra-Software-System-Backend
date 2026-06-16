@@ -9,6 +9,7 @@ def health(request):
 
 urlpatterns = [
     path("health", health, name="health"),
+    path("auth/", include("accounts.auth_urls")),
     path("me", include("accounts.urls")),
     path("tasks", include("workflow.urls")),
     path("opportunities", include("opportunities.urls")),

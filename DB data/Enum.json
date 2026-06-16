@@ -1,0 +1,38 @@
+[
+  {
+    "enum_name": "chiller_compressor_type",
+    "enum_values": "{Centrifugal,Screw,Scroll,Reciprocating}"
+  },
+  {
+    "enum_name": "chiller_condenser_method",
+    "enum_values": "{AirCooled,WaterCooled}"
+  },
+  {
+    "enum_name": "document_type",
+    "enum_values": "{offer,submittal,rfq}"
+  },
+  {
+    "enum_name": "loss_reason",
+    "enum_values": "{price,technical,relationship,delivery_delay,response_delay,scope_changed,bad_experience}"
+  },
+  {
+    "enum_name": "product_family",
+    "enum_values": "{Chiller,Pump,Generator}"
+  },
+  {
+    "enum_name": "project_application",
+    "enum_values": "{Industrial,Commercial,Health,Residential}"
+  },
+  {
+    "enum_name": "project_scope",
+    "enum_values": "{Supply,SupplyInstallation,Maintenance,Retrofit,Other}"
+  },
+  {
+    "enum_name": "project_status",
+    "enum_values": "{won,lost,technicalApproval,onHold,withDifferentContractor,tenderingPhase,cancelled,finalNegotiation}"
+  },
+  {
+    "enum_name": "win_reason",
+    "enum_values": "{price,technical,relationship,service,sole_source,bundled_deal}"
+  }
+]

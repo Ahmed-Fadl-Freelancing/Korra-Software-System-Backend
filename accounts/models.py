@@ -26,7 +26,7 @@ class Department(models.Model):
 class UserProfile(models.Model):
     """public.user_profiles – keyed by auth.users.id (UUID from Supabase Auth)."""
 
-    id = models.UUIDField(primary_key=True)  # = auth.users.id / JWT sub
+    id = models.UUIDField(primary_key=True, db_column="user_id")  # = auth.users.id / JWT sub
     employee_code = models.CharField(max_length=50, blank=True)
     full_name = models.CharField(max_length=255, blank=True)
     department = models.ForeignKey(
