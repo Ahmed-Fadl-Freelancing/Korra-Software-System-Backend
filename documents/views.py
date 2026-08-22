@@ -1,5 +1,5 @@
 """
-Supabase Storage signed URL endpoints.
+Supabase Storage signed URL endpoints, plus document metadata persistence.
 
 POST /documents/signed-upload-url
   Body: { bucket, path, content_type }
@@ -8,15 +8,28 @@ POST /documents/signed-upload-url
 GET  /documents/signed-download-url?bucket=&path=&expires_in=<seconds>
   Returns: { signed_url }
 
+POST /documents/
+  Body: { project_id, doc_type, bucket, path, filename, content_type?, notes? }
+  Returns: the created Document row.
+  Called after a file has been PUT to a signed upload URL, to record that the file
+  now physically exists at bucket/path and associate it with a project.
+
 The service role key is used server-side only and never returned to the client.
 """
 import logging
 
 from django.conf import settings
+from django.db import transaction
+from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from supabase import StorageException, create_client
+
+from opportunities.models import Project
+
+from .models import Document
+from .serializers import DocumentCreateSerializer, DocumentSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -108,3 +121,36 @@ class SignedDownloadUrlView(APIView):
                 {"detail": "Could not create signed download URL."},
                 status=502,
             )
+
+
+class DocumentCreateView(APIView):
+    """POST /documents/ — record metadata for a file already uploaded to Supabase Storage."""
+
+    def post(self, request):
+        serializer = DocumentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        project = get_object_or_404(Project, pk=data["project_id"])
+        version = (
+            Document.objects.filter(project=project, doc_type=data["doc_type"]).count() + 1
+        )
+
+        with transaction.atomic():
+            Document.objects.filter(
+                project=project, doc_type=data["doc_type"], is_current=True
+            ).update(is_current=False)
+            document = Document.objects.create(
+                project=project,
+                doc_type=data["doc_type"],
+                version=version,
+                bucket=data.get("bucket") or "documents",
+                path=data["path"],
+                filename=data["filename"],
+                content_type=data.get("content_type") or "application/pdf",
+                notes=data.get("notes", ""),
+                created_by_id=request.user.user_id,
+                is_current=True,
+            )
+
+        return Response(DocumentSerializer(document).data, status=201)

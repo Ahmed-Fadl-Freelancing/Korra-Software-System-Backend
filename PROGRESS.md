@@ -9,20 +9,25 @@
 >
 > Linear: Team **Korrra** (key `KOR`). One PR **per feature (milestone group)**, never per issue.
 > Branch convention (new work): **`feat/<Name>`** (e.g. `feat/Auth`).
-> Last updated: 2026-06-04 — KOR-113–116 created in Linear, status: In Review (PR #2 open)
+> Last updated: 2026-08-22 — KOR-93/95/96 (Opportunities list/manual-create/detail) and the
+> `POST /documents/` metadata endpoint implemented on `claude/korra-project-setup-sumr8a`: real
+> `Project`/`Document` models against the existing Supabase tables (no migration needed, tables
+> already exist), contractor/owner/consultant get-or-created by name, `CreateOpportunity` rebuilt
+> with real dropdowns/inputs in place of PDF extraction (still deferred — KOR-94/88-92 unchanged).
+> Also corrected KOR-113–116's stale "In Review" status below — that PR merged to `main` a while
+> ago. Day-to-day workstream sequencing lives in `korra-project/PLAN.md` (shared workspace, kept in
+> sync with the backend repo) — see it for what's next and each task's `tasks/NNN-*.md` for full
+> detail.
+>
+> **Brand:** Card palette = Blue · White · Silver. All UI must follow this. See `ISSUES.md` → Brand Identity for exact tokens.
 
 ---
 
 ## ▶ NEXT UP
 
-| Repo | Issue | Title | Branch | Status |
-|------|-------|-------|--------|--------|
-| **[BE]** | **KOR-113–116** | Auth session endpoints — signup / login / logout / refresh (Supabase proxy) | `feat/Auth` | 🔧 In Review (PR #2) |
-| [FE] | KOR-5x | Wire login/signup forms to backend `/auth/*` (replace direct Supabase calls if desired) | `feat/Auth` | 🔲 Todo — confirm ID in FE repo |
-
-> ℹ️ Frontend issue IDs below come from the handover docs (`BACKEND_HANDOVER.md`)
-> and may differ from Linear. **Confirm the real KOR id in the frontend repo's
-> own PROGRESS.md / Linear before starting an [FE] task.**
+KOR-117–121 and KOR-93/95/96 are done (see Milestones 2 and 4 below). Next-task sequencing now
+lives in `korra-project/PLAN.md` — read it for the prioritized workstream order, and read the
+relevant `tasks/NNN-*.md` file in this repo (or the backend repo) in full before starting any task.
 
 ---
 
@@ -35,12 +40,17 @@
 | [BE] | KOR-83 | `SupabaseJWTAuthentication` — local HS256 verify with `SUPABASE_JWT_SECRET` | ✅ Done |
 | [BE] | KOR-84 | `GET /me` — profile + department + roles | ✅ Done |
 | [BE] | KOR-85 | `GET /health` — liveness probe | ✅ Done |
-| [BE] | KOR-113 | `POST /auth/signup` — proxy to Supabase Auth | 🔧 In Review (PR #2) |
-| [BE] | KOR-114 | `POST /auth/login` — password grant, relays Supabase tokens | 🔧 In Review (PR #2) |
-| [BE] | KOR-115 | `POST /auth/logout` — revoke Supabase session | 🔧 In Review (PR #2) |
-| [BE] | KOR-116 | `POST /auth/refresh` — refresh-token grant | 🔧 In Review (PR #2) |
-| [FE] | KOR-53 | Auth foundation — Supabase JWT, `AuthContext`, `/me` hydration | ✅ Done (per handover) |
-| [FE] | KOR-54 | App layout support | 🔲 Todo (per handover) |
+| [BE] | KOR-113 | `POST /auth/signup` — proxy to Supabase Auth | ✅ Done (merged to `main`, PR #2) |
+| [BE] | KOR-114 | `POST /auth/login` — password grant, relays Supabase tokens | ✅ Done (merged to `main`, PR #2) |
+| [BE] | KOR-115 | `POST /auth/logout` — revoke Supabase session | ✅ Done (merged to `main`, PR #2) |
+| [BE] | KOR-116 | `POST /auth/refresh` — refresh-token grant | ✅ Done (merged to `main`, PR #2) |
+| [FE] | KOR-53 | Auth foundation — Backend Proxy (`/auth/*`), `AuthContext`, signIn/signUp/signOut | ✅ Done (merged) |
+| [FE] | KOR-54 | App Layout — AppLayout, AppSidebar, Topbar skeleton | ✅ Done |
+| [FE] | KOR-117 | GET /me — restore user profile fetch after login | ✅ Done |
+| [FE] | KOR-118 | AuthContext — expose user profile, hasDepartment, hasRole, departmentName | ✅ Done |
+| [FE] | KOR-119 | Department-based routing — /app → /app/sales or /app/tech | ✅ Done |
+| [FE] | KOR-120 | ProtectedRoute — department null guard + role/section guards | ✅ Done |
+| [FE] | KOR-121 | Topbar — display user full_name, department badge, manager badge | ✅ Done |
 
 > **Architecture note:** Django never mints its own JWT. The `/auth/*` endpoints
 > forward credentials to **Supabase Auth (GoTrue)**; Supabase issues the
@@ -61,17 +71,18 @@
 | [BE] | KOR-90 | Celery async task wrapping the extraction pipeline | `feat/PdfExtraction` | 🔲 Todo |
 | [BE] | KOR-91 | `POST /pdf-extraction/` — trigger job | `feat/PdfExtraction` | 🔲 Todo |
 | [BE] | KOR-92 | `GET /pdf-extraction/{job_id}/` — poll status | `feat/PdfExtraction` | 🔲 Todo |
-| [FE] | KOR-55 | Opportunity intake — PDF extraction UI (upload + confidence review) | `feat/Opportunity` | 🔲 Todo (per handover) |
-| [FE] | KOR-56 | Opportunity intake — manual creation form | `feat/Opportunity` | 🔲 Todo (per handover) |
+| [FE] | KOR-55 | Opportunity intake — PDF extraction UI (upload + confidence review) | `feat/Opportunity` | 🔲 Todo — deferred until KOR-88–92 land; see KOR-56 for the manual-entry stand-in used meanwhile |
+| [FE] | KOR-56 | Opportunity intake — manual creation form | `feat/Opportunity` | ✅ Done — real dropdowns (application/scope/product family) + inputs, wired to `POST /opportunities/manual`; also uploads + registers documents against the created project |
 
 ## Milestone 4 — Opportunity Management
 
 | Repo | Issue | Title | Branch | Status |
 |------|-------|-------|--------|--------|
-| [BE] | KOR-93 | `GET /opportunities` — list for current user | `feat/Opportunity` | 📋 Backlog |
-| [BE] | KOR-94 | `POST /opportunities` — from PDF (Path A) | `feat/Opportunity` | 📋 Backlog |
-| [BE] | KOR-95 | `POST /opportunities/manual` — manual (Path B) | `feat/Opportunity` | 📋 Backlog |
-| [BE] | KOR-96 | `GET + PATCH /opportunities/{id}` — detail / status | `feat/Opportunity` | 📋 Backlog |
+| [BE] | KOR-93 | `GET /opportunities` — list for current user | `feat/Opportunity` | ✅ Done |
+| [BE] | KOR-94 | `POST /opportunities` — from PDF (Path A) | `feat/Opportunity` | 📋 Backlog — deferred until real PDF extraction (Milestone 3) lands; Path B below covers the same data-integration flow for now |
+| [BE] | KOR-95 | `POST /opportunities/manual` — manual (Path B) | `feat/Opportunity` | ✅ Done — real `Project` row written to Supabase; contractor/owner/consultant get-or-created by name, product get-or-created by model code |
+| [BE] | KOR-96 | `GET + PATCH /opportunities/{id}` — detail / status | `feat/Opportunity` | ✅ Done (PATCH currently limited to `status`) |
+| [BE] | — | `POST /documents/` — persist metadata for a file already uploaded via signed URL, mark version/is_current | `feat/Opportunity` | ✅ Done (not originally tracked as its own KOR issue — added alongside KOR-95 since Path B needs it to actually register an uploaded file) |
 
 ## Milestone 5 — Workflow Tasks
 
