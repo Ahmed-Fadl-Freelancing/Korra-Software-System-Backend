@@ -1,3 +1,14 @@
+> **Status: ✅ Done** (2026-08-22, on `claude/korra-project-setup-sumr8a`) — `GET /opportunities/`,
+> `POST /opportunities/manual`, `GET+PATCH /opportunities/<id>/` all implemented against real
+> `Project`/`Contractor`/`Owner`/`Consultant`/`Product` models (all `managed=False`, tables already
+> existed in Supabase — no migration needed). Contractor/owner/consultant are get-or-created by
+> name rather than picked from a lookup UI (see the serializer docstring for why — deliberate
+> simplification, not an oversight). `POST /opportunities` (Path A, PDF-derived) is still not
+> implemented — deferred until PDF extraction itself is real. PATCH is currently `status`-only.
+> Not live-verified against Supabase from within the sandbox that built this (outbound network to
+> `*.supabase.co` and raw Postgres are both blocked there) — verified via `manage.py check`, direct
+> SQL-generation inspection against the real schema, and URL/redirect behavior instead.
+
 # 003 — Real Opportunities (projects) CRUD API
 
 ## Goal
