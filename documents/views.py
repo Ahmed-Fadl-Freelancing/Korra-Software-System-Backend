@@ -14,6 +14,12 @@ POST /documents/
   Called after a file has been PUT to a signed upload URL, to record that the file
   now physically exists at bucket/path and associate it with a project.
 
+PATCH /documents/<uuid:pk>/
+  Body: { is_current: true }
+  Returns: the updated Document row.
+  Promotes an existing (older) document version to current — see DocumentDetailView
+  for the exact semantics (flips the flag on the existing row, doesn't create a new version).
+
 The service role key is used server-side only and never returned to the client.
 """
 import logging
@@ -29,7 +35,7 @@ from supabase import StorageException, create_client
 from opportunities.models import Project
 
 from .models import Document
-from .serializers import DocumentCreateSerializer, DocumentSerializer
+from .serializers import DocumentCreateSerializer, DocumentSerializer, DocumentSetCurrentSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +130,15 @@ class SignedDownloadUrlView(APIView):
 
 
 class DocumentCreateView(APIView):
-    """POST /documents/ — record metadata for a file already uploaded to Supabase Storage."""
+    """POST /documents/ — record metadata for a file already uploaded to Supabase Storage.
+
+    version and is_current are computed by the documents_set_version_and_current DB trigger
+    (DB data/migrations/0001_fix_documents_before_insert_trigger.sql), not here — it owns that
+    logic authoritatively (and atomically, inside the same INSERT, so two concurrent uploads for
+    the same project+doc_type can't race to compute the same version number the way a separate
+    count-then-insert from application code could). refresh_from_db() picks up what the trigger
+    set, since Django's own INSERT has no visibility into a BEFORE trigger's changes to NEW.
+    """
 
     def post(self, request):
         serializer = DocumentCreateSerializer(data=request.data)
@@ -132,25 +146,52 @@ class DocumentCreateView(APIView):
         data = serializer.validated_data
 
         project = get_object_or_404(Project, pk=data["project_id"])
-        version = (
-            Document.objects.filter(project=project, doc_type=data["doc_type"]).count() + 1
+
+        document = Document.objects.create(
+            project=project,
+            doc_type=data["doc_type"],
+            bucket=data.get("bucket") or "documents",
+            path=data["path"],
+            filename=data["filename"],
+            content_type=data.get("content_type") or "application/pdf",
+            notes=data.get("notes", ""),
+            created_by_id=request.user.user_id,
         )
+        document.refresh_from_db()
+
+        return Response(DocumentSerializer(document).data, status=201)
+
+
+class DocumentDetailView(APIView):
+    """PATCH /documents/<uuid:pk>/ — promote an existing (older) document version to current.
+
+    Only {"is_current": true} is supported — there's no un-set; "no version is current" isn't a
+    meaningful state here. Promoting one version demotes whichever was current before it, as a
+    side effect, same as a fresh upload would. This *flips the flag on the existing row* rather
+    than creating a new version copy — "revert" semantics, not "restore as a new version" — a
+    deliberate default since the product's intended behavior isn't documented anywhere; flag it if
+    you'd rather promoting an old version bumped a new version number instead.
+
+    Unlike DocumentCreateView, this can't rely on a BEFORE INSERT trigger (this is an UPDATE, and
+    no equivalent AFTER UPDATE trigger exists for the current_offer_id/current_submittal_id sync),
+    so it does that sync explicitly here.
+    """
+
+    def patch(self, request, pk):
+        document = get_object_or_404(Document, pk=pk)
+        serializer = DocumentSetCurrentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
 
         with transaction.atomic():
             Document.objects.filter(
-                project=project, doc_type=data["doc_type"], is_current=True
-            ).update(is_current=False)
-            document = Document.objects.create(
-                project=project,
-                doc_type=data["doc_type"],
-                version=version,
-                bucket=data.get("bucket") or "documents",
-                path=data["path"],
-                filename=data["filename"],
-                content_type=data.get("content_type") or "application/pdf",
-                notes=data.get("notes", ""),
-                created_by_id=request.user.user_id,
-                is_current=True,
-            )
+                project_id=document.project_id, doc_type=document.doc_type, is_current=True
+            ).exclude(pk=document.pk).update(is_current=False)
+            document.is_current = True
+            document.save(update_fields=["is_current"])
 
-        return Response(DocumentSerializer(document).data, status=201)
+            if document.doc_type == Document.DocType.OFFER:
+                Project.objects.filter(pk=document.project_id).update(current_offer_id=document.pk)
+            elif document.doc_type in (Document.DocType.SUBMITTAL, Document.DocType.RFQ):
+                Project.objects.filter(pk=document.project_id).update(current_submittal_id=document.pk)
+
+        return Response(DocumentSerializer(document).data)

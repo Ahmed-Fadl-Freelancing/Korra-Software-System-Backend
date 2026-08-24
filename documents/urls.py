@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .views import DocumentCreateView, SignedDownloadUrlView, SignedUploadUrlView
+from .views import (
+    DocumentCreateView,
+    DocumentDetailView,
+    SignedDownloadUrlView,
+    SignedUploadUrlView,
+)
 
 # Mounted at /documents/ in core/urls.py
 urlpatterns = [
@@ -11,4 +16,5 @@ urlpatterns = [
         SignedDownloadUrlView.as_view(),
         name="signed-download-url",
     ),
+    path("<uuid:pk>/", DocumentDetailView.as_view(), name="documents-detail"),
 ]
