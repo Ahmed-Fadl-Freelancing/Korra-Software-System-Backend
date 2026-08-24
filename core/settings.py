@@ -128,7 +128,14 @@ CORS_ALLOW_CREDENTIALS = True
 # Supabase
 # ---------------------------------------------------------------------------
 SUPABASE_URL = env("SUPABASE_URL", default="")
+# Legacy HS256 shared secret — no longer used to verify session JWTs (see accounts/authentication.py
+# for why: this project's real tokens are ES256-signed). Kept here only in case something else in
+# Supabase still relies on it; SUPABASE_JWT_PUBLIC_KEY is what authentication actually uses now.
 SUPABASE_JWT_SECRET = env("SUPABASE_JWT_SECRET", default="")
+# ES256 public key (PEM) Supabase signs session JWTs with. Dashboard → Settings → API → JWT
+# Settings → "show JWKS" / legacy JWT keys page. Safe to hold in Django — it's a public key, not
+# the private signing key.
+SUPABASE_JWT_PUBLIC_KEY = env("SUPABASE_JWT_PUBLIC_KEY", default="")
 SUPABASE_ANON_KEY = env("SUPABASE_ANON_KEY", default="")
 SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", default="")
 

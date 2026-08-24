@@ -2,12 +2,22 @@
 Supabase JWT authentication for Django REST Framework.
 
 Validates the JWT issued by Supabase Auth:
-  - Algorithm : HS256
-  - Secret    : SUPABASE_JWT_SECRET (settings)
-  - Claims    : exp (validated by PyJWT), sub (→ user_id UUID), email
+  - Algorithm : ES256 (asymmetric — Supabase's current default for new projects)
+  - Key       : SUPABASE_JWT_PUBLIC_KEY (settings) — a public key, safe to hold in Django;
+                Django never needs (or has) the private key Supabase signs with.
+  - Claims    : exp (validated by PyJWT), sub (→ user_id UUID), email, aud (must be "authenticated")
   - Attaches  : request.user as an AuthenticatedUser (lightweight object)
 
-No network call is made to Supabase – everything is verified locally.
+No network call is made to Supabase – everything is verified locally, using the public key alone.
+
+Was HS256 + SUPABASE_JWT_SECRET (a shared secret) until this was found live: every real Supabase-
+issued token for this project is actually signed ES256, so the HS256 path rejected every real
+request outright (`InvalidAlgorithmError`) — confirmed by decoding a live token's header
+(`{"alg":"ES256",...}`) and by testing HS256 verification against it, which failed exactly as
+expected. Switching to ES256 + the public key was then verified two ways against that same real
+token: signature accepted when valid, `InvalidSignatureError` correctly raised when the token was
+tampered with. SUPABASE_JWT_SECRET is no longer used here — it may still be Supabase's legacy
+shared secret for other purposes, but it isn't what signs session JWTs for this project.
 """
 import logging
 
@@ -57,16 +67,17 @@ class SupabaseJWTAuthentication(BaseAuthentication):
         if not token:
             return None
 
-        secret = settings.SUPABASE_JWT_SECRET
-        if not secret:
-            logger.error("SUPABASE_JWT_SECRET is not configured")
+        public_key = settings.SUPABASE_JWT_PUBLIC_KEY
+        if not public_key:
+            logger.error("SUPABASE_JWT_PUBLIC_KEY is not configured")
             raise AuthenticationFailed("Server authentication configuration error.")
 
         try:
             payload = jwt.decode(
                 token,
-                secret,
-                algorithms=["HS256"],
+                public_key,
+                algorithms=["ES256"],
+                audience="authenticated",
                 options={"require": ["exp", "sub"]},
             )
         except jwt.ExpiredSignatureError:
