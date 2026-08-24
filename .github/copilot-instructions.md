@@ -101,6 +101,7 @@
 | Middleware | `middleware/` |
 | Secrets | Always via `django-environ` + `.env` |
 | Commits | `feat(scope): description (KOR-XX)` |
+| Hand-run SQL against Supabase | Numbered file in `DB data/migrations/` (e.g. `0001_<what>.sql`), committed like any other code file — never a scratch script. Django's own migrations only ever apply to Django-managed tables (currently just `pdf_extraction`); anything touching Supabase-owned tables/triggers/functions directly goes here instead, with the reasoning in the file's header, applied by hand in the Supabase SQL editor. |
 
 ## Stack
 Python 3.11+, Django 4.2, DRF 3.15, psycopg2-binary, PyJWT 2.9, cryptography, httpx 0.27, supabase-py 2.8, Celery 5.4 + Redis 5.1, django-environ 0.11, django-cors-headers 4.4, gunicorn 23.0.
