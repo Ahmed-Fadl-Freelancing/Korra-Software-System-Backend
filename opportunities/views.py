@@ -8,6 +8,7 @@ write -> document-in-bucket flow can be exercised end-to-end without it.
 """
 import logging
 
+from django.db import connection, transaction
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -105,6 +106,15 @@ class OpportunityDetailView(APIView):
         project = self.get_object(pk)
         serializer = ProjectPatchSerializer(project, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        # A live DB-side trigger (undocumented anywhere in the schema — discovered by hitting it)
+        # requires app.user_id to be set in the same transaction for any UPDATE on projects, almost
+        # certainly to attribute the change in an audit trigger (project_status_history territory,
+        # KOR-106). Real error surfaced during live testing:
+        #   "Missing app.user_id in DB session. Backend must do:
+        #    SET LOCAL app.user_id = '<uuid>' inside the same transaction."
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("SET LOCAL app.user_id = %s", [str(request.user.user_id)])
+            serializer.save()
         project = get_object_or_404(Project.objects.select_related(*_SELECT_RELATED), pk=pk)
         return Response(ProjectSerializer(project).data)

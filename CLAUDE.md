@@ -36,7 +36,7 @@
 
 ## Architecture Constraints (never violate)
 - Django is **stateless**. It never mints its **own** tokens or uses sessions/cookies.
-- **Auth = Supabase JWT.** `SupabaseJWTAuthentication` decodes the HS256 JWT locally with `SUPABASE_JWT_SECRET` — **no per-request network call** to Supabase.
+- **Auth = Supabase JWT.** `SupabaseJWTAuthentication` decodes the ES256 JWT locally with `SUPABASE_JWT_PUBLIC_KEY` — **no per-request network call** to Supabase. (Was documented as HS256 + `SUPABASE_JWT_SECRET` until a live test caught that this project's real tokens are ES256-signed and the HS256 path rejected every one of them — see `korra-project/SUCCESS_FLOW_STEPS.md` and `korra-project/JWT_AUTH_EXPLAINED.md`.)
 - `request.user` is an `AuthenticatedUser` (lightweight) with `user_id` = JWT `sub` claim; `request.auth` = the raw bearer token.
 - **`/auth/*` endpoints are a Supabase Auth (GoTrue) proxy.** They forward credentials to Supabase, which issues the tokens; Django only relays them. This does **not** violate "never issue JWTs" — Django never signs a token itself.
 - Authorization: query `user_profiles` + `user_roles`. **Never trust JWT claims for roles.**
@@ -101,6 +101,7 @@
 | Middleware | `middleware/` |
 | Secrets | Always via `django-environ` + `.env` |
 | Commits | `feat(scope): description (KOR-XX)` |
+| Hand-run SQL against Supabase | Numbered file in `DB data/migrations/` (e.g. `0001_<what>.sql`), committed like any other code file — never a scratch script. Django's own migrations only ever apply to Django-managed tables (currently just `pdf_extraction`); anything touching Supabase-owned tables/triggers/functions directly goes here instead, with the reasoning in the file's header, applied by hand in the Supabase SQL editor. |
 
 ## Stack
 Python 3.11+, Django 4.2, DRF 3.15, psycopg2-binary, PyJWT 2.9, cryptography, httpx 0.27, supabase-py 2.8, Celery 5.4 + Redis 5.1, django-environ 0.11, django-cors-headers 4.4, gunicorn 23.0.
@@ -111,5 +112,5 @@ Python 3.11+, Django 4.2, DRF 3.15, psycopg2-binary, PyJWT 2.9, cryptography, ht
 - Never **sign/issue** a JWT in Django (Supabase issues them; `/auth/*` only relays).
 - Never process PDFs on the frontend.
 - Never bypass or re-implement Supabase RLS.
-- Never hardcode `SUPABASE_JWT_SECRET`, `SUPABASE_ANON_KEY`, `DATABASE_URL`, or any credential.
+- Never hardcode `SUPABASE_JWT_PUBLIC_KEY`, `SUPABASE_ANON_KEY`, `DATABASE_URL`, or any credential.
 - **Never merge a PR** — wait for the human reviewer.

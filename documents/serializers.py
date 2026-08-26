@@ -34,3 +34,17 @@ class DocumentCreateSerializer(serializers.Serializer):
     filename = serializers.CharField(max_length=255)
     content_type = serializers.CharField(max_length=100, required=False, default="application/pdf")
     notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class DocumentSetCurrentSerializer(serializers.Serializer):
+    """PATCH /documents/{id}/ — only {"is_current": true} is supported (see DocumentDetailView)."""
+
+    is_current = serializers.BooleanField()
+
+    def validate_is_current(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "Only is_current=true is supported — promotes this version to current; "
+                "there's no way to un-set it directly."
+            )
+        return value
