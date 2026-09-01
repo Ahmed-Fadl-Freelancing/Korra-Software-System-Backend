@@ -411,7 +411,10 @@ ANALYTICS
    `project_status_history` row is written; `win_reason` must be cleared as `loss_reason` is set (the
    CHECK constraints force this — verify the API does it in one UPDATE, not two).
 6. **Concurrent decisions on two lines of the same project** in two transactions → both roll-ups race
-   on the parent. Take `SELECT … FROM projects WHERE id = ? FOR UPDATE` before recomputing.
+   on the parent. `SELECT … FROM projects WHERE id = ? FOR UPDATE` before recomputing serialises them.
+   Verified live with two overlapping sessions (§11): the later one blocks, re-reads after the first
+   commits, and lands on `partiallyWon` with exactly one history row — not the "each sees one line
+   still open, so neither rolls up" outcome you get without the lock.
 7. **★ The `app.user_id` trap.** Any UPDATE on `projects` fires the existing audit trigger, which
    errors with *"Missing app.user_id in DB session"* unless the transaction ran
    `SET LOCAL app.user_id = '<uuid>'` first. The roll-up updates `projects`. So: if the roll-up is a
@@ -457,20 +460,217 @@ ANALYTICS
 
 ---
 
-## 7. Open decisions — I need your call before writing migrations
+## 7. Decisions — RESOLVED 2026-09-01, and where each one landed
 
-1. **Partial quantity.** Client awards 2 of the 3 chillers. Split into two lines (2 won / 1 lost) —
-   keeps one clean grain and I recommend it — or add `won_quantity` to a single line? Splitting is
-   cleaner for analytics; a `won_quantity` column is fewer clicks for the sales engineer.
-2. **Roll-up in a DB trigger or in the API service layer?** Trigger = stays correct even when you
-   hand-edit rows in the Supabase SQL editor (which you do). Service layer = no hidden magic, and this
-   schema has already bitten us twice with undocumented triggers. I lean **trigger**, precisely
-   because of the hand-editing workflow — but it must be written to never depend on a session GUC of
-   its own.
-3. **Does `projects.product_id` get dropped?** Recommend: keep it for now, stop writing it, drop in a
-   later migration once nothing reads it. Dropping it immediately breaks the current
-   `/opportunities` serializer and the frontend's `Project.product` field in the same deploy.
-4. **`bid_due_date` / `region` / `promised_delivery_weeks`** — add now (cheap) or skip (expensive to
-   backfill later, and `response_delay`/`delivery_delay` loss reasons stay unmeasurable until you do)?
-5. **Currency** — is everything EGP today, or do you quote USD too? Determines whether `currency`
-   needs an FX table or is just a label.
+| # | Question | Decision | Implemented in |
+|---|---|---|---|
+| 1 | Partial quantity | **No partial win inside a family.** A line is won or lost whole. When fewer units are awarded than quoted, the project's own sales engineer edits `awarded_quantity` down; the shortfall is *not* recorded as a loss. | `0002` — `quantity` (quoted) + `awarded_quantity` (nullable, won-only, `<= quantity`), defaulted on win by trigger |
+| 2 | Roll-up in a trigger or the service layer | **Trigger**, because rows get hand-edited in the Supabase SQL editor and a service-layer roll-up goes stale every time that happens | `0002` — `project_items_rollup_status()` |
+| 3 | Drop `projects.product_id` | **Keep for now**, marked deprecated, stop writing it. Backend switches to `project_items` first, frontend follows, a later migration drops it. | `0002` — `COMMENT ON COLUMN` |
+| 4 | `bid_due_date` / `region` / `promised_delivery_weeks` | **Add all three**, plus `tender_due_date` and `quoted_at` — without those last two the `response_delay` and `delivery_delay` loss reasons stay unmeasurable | `0004` |
+| 5 | Currency | **USD everywhere.** Conversion is a display feature served by a Django `/fx/rates` proxy, never written back into a price column. | `0004` Part 3 |
+
+### 1 — why `awarded_quantity` and not just editing `quantity`
+
+The instinct is to let the sales engineer change `quantity` from 3 to 2 and be done. Don't: that
+destroys the fact that 3 were quoted. Six months later nobody can answer "how often do we get
+scaled down after winning, and on which product?" — which is a real signal about pricing and about
+how the RFQ was read. Two columns, one editable field in the UI, and the shortfall stays visible as
+`quantity - awarded_quantity`.
+
+Editing is restricted to the project's own sales engineer (`projects.sales_eng_id`) — enforce it in
+the API, not only the UI.
+
+### 2 — what the question actually was
+
+When the pump line is marked won and the chiller line lost, *something* has to notice and set
+`projects.status = 'partiallyWon'`. That code lives in one of two places:
+
+- **In Postgres**, as a trigger on `project_items` — fires on *any* change, including rows edited
+  by hand in the Supabase SQL editor.
+- **In Django**, in the service layer — fires only when the change arrives through the API. Every
+  hand-edit silently leaves the project's status wrong.
+
+Given that this project's normal workflow includes hand-editing rows in the SQL editor, the trigger
+is the only one that stays correct. The cost is hidden behaviour, which this schema has already
+inflicted twice (the `documents` BEFORE-INSERT bug in `0001`, and the `app.user_id` audit trigger) —
+so the function is written defensively: it takes `FOR UPDATE` on the parent before recomputing, it
+refuses to overwrite a terminal status, and it sets `app.user_id` itself when the caller hasn't
+(see edge case 7).
+
+---
+
+## 8. Change set D — in-tender vs in-hand (answering the sixth question)
+
+**This is an attribute of the deal, not a workflow status.** That single distinction is the whole
+answer.
+
+The pull is to reuse `projects.status = 'tenderingPhase'`, since the value already exists. It's the
+wrong move. `status` answers *"where is Korra's work"* — `technicalApproval`, `finalNegotiation`.
+The new question is *"does the contractor even have the job"*. The two move independently: a
+contractor can still be bidding while Korra's own work has already reached technical approval. Fold
+them into one column and every time the internal status advances, the record of whether the job was
+ever secured is erased.
+
+So: `projects.tender_stage` — `inTender` | `inHand`, defaulting to `inTender` (treating a
+speculative deal as secured overstates the pipeline; the reverse only understates it).
+
+### What it buys
+
+**Priority of work — the thing you asked about.** An in-hand deal is revenue being decided now; an
+in-tender deal is a lottery ticket. `v_work_queue` in `0005` sorts on it. The score is *derived, not
+stored*: a stored priority column is wrong the day after it's written, because a deal becomes urgent
+purely by the date moving and nobody re-ranks the list by hand.
+
+```
+overdue quote                +1000
+in-hand                      + 500
+due within 3 / 7 / 14 days   + 300 / +200 / +100
+no lines yet (needs intake)  +  75
+```
+
+A project is *in* the queue when it is non-terminal **and** either still has undecided lines or has
+no lines at all. Filtering on status alone is not enough: a `partiallyWon` project whose every line
+is already decided has nothing left to do on it and would otherwise sit in somebody's queue
+forever.
+
+**An honest win rate.** The contractor loses his own tender, so Korra's opportunity dies — through
+no fault of the quote. Today the only way to record that is `lost` with a `loss_reason` that isn't
+true, and `price` is the one people reach for. That single miscoding is enough to make the sales
+manager's win/loss chart lie. Hence the new `loss_reason = 'contractor_lost_tender'`, and the rule
+every view in `0005` obeys: **tender attrition is not a competitive loss and never enters a win-rate
+denominator.** It gets its own column so the two questions stay separable:
+
+- *Did the contractor pick us?* → competitive win rate
+- *Did the work turn into revenue?* → realisation rate, attrition included
+
+**Market share that isn't triple-counted.** One building, tendered by its owner, reaches Korra
+through three contractors who are all bidding for it. That's one opportunity quoted three times, but
+three rows in `projects`. Counted naively, winning it through contractor B reads as 1 win and 2
+losses — 33%, when the truth is Korra got the building. `tender_groups` + `projects.tender_group_id`
+(both nullable, so they cost nothing when the case doesn't arise) let `v_tender_group_outcomes`
+count the group once.
+
+### The kill path
+
+A contractor losing his tender kills every open line at once. Doing that line-by-line from the API
+invites a half-killed project when the second call fails, so it's one function:
+`project_contractor_lost_tender(project_id, actor_id, note)`. It sets every still-open line to
+`lost` / `contractor_lost_tender`, and the project to `withDifferentContractor` — a `project_status`
+value that already exists and means exactly this. The roll-up in `0002` treats
+`withDifferentContractor` and `cancelled` as **terminal and never overwritten**, so the reason the
+project died survives instead of being flattened to a plain `lost`.
+
+Lines already decided before the collapse are left alone: if a line was genuinely won, that's still
+true and analytics should still see it.
+
+---
+
+## 9. Additional edge cases (29–40), from change sets A′ and D
+
+### Quantity
+29. `awarded_quantity` set on a line that is not won → rejected. Note this is enforced by the
+    *trigger*, not the CHECK: the first version cleared the value silently, so the API would have
+    returned 200 having thrown the number away. Caught by the test run below.
+30. `awarded_quantity > quantity` → rejected by CHECK.
+31. Line flipped won → lost after an award → `awarded_quantity` must return to NULL. The
+    `BEFORE` trigger does it; verify the API doesn't try to set both in a way that fights it.
+32. A user who is not the project's `sales_eng_id` edits `awarded_quantity` → API must reject.
+    There is no DB constraint for this one; it is the only rule in this set that lives only in code.
+
+### Tender stage
+33. `inTender` → `inHand` mid-flight (the contractor wins his tender while Korra is still quoting)
+    → allowed, and it must **not** touch `projects.status`. The work queue re-ranks on its own,
+    because the score is derived.
+34. `project_contractor_lost_tender` on a project that already has won lines → those lines keep
+    their outcome; only open lines are killed. Project still goes to `withDifferentContractor`.
+35. Roll-up must not fire after `withDifferentContractor` is set — otherwise the last line's
+    decision relabels the project `lost` and the real reason vanishes. Terminal-status guard.
+36. Same function called twice → second call is a no-op (no open lines left). Confirm it doesn't
+    write a second `project_status_history` row.
+37. `tender_due_date` earlier than `bid_due_date` → nonsense (Korra's quote due after the
+    contractor's bid). Not constrained in the DB because real tenders do get extended; warn in
+    the UI.
+38. Three projects in one `tender_group`, two lost and one won → `v_tender_group_outcomes` reports
+    **one** win. The per-project views still report 1 won and 2 lost. Both are correct; the
+    dashboard must label which question it is answering.
+
+### Currency
+39. Any write of a non-USD amount into `unit_price` / `competitor_price` → wrong by construction.
+    The converter is display-only; it never writes back.
+40. FX API key in a `VITE_` variable → published in the browser bundle. The key lives in Django,
+    which proxies `GET /fx/rates` with a daily cache — and the frontend rulebook allows exactly one
+    backend anyway.
+
+---
+
+## 10. Migration files written
+
+| # | File | Contents |
+|---|---|---|
+| 1 | `0002_project_items_line_grain.sql` | `competitors`, `project_item_status`, `partiallyWon`, `project_items` + 6 CHECKs + composite FK, roll-up trigger, awarded-qty trigger, deprecation comments, backfill, RLS |
+| 2 | `0003_project_notes_review_notifications.sql` | `project_notes`, `project_review_requests` (`note_id NOT NULL`), `notifications` + fan-out trigger, RLS |
+| 3 | `0004_tender_stage_and_commercial_fields.sql` | `contractor_lost_tender`, `project_tender_stage`, `tender_groups`, `regions`, `bid_due_date` / `tender_due_date` / `quoted_at` / `region_id`, `promised_delivery_weeks`, USD, contractor-lost-tender function |
+| 4 | `0005_analytics_views.sql` | 7 views incl. `v_project_item_outcomes`, `v_work_queue`, `v_tender_group_outcomes`; `security_invoker` on all of them |
+
+Run each file top to bottom, in that order, in the Supabase SQL editor. **No file needs splitting**
+— see the note at the top of `0002` on why the usual enum-in-a-transaction warning does not apply
+here, and what change to the file would make it apply.
+
+Nothing has been applied to the live database.
+
+---
+
+## 11. Verification — what was actually run
+
+These migrations were not written and handed over unrun. A PostgreSQL 16 cluster was built locally,
+this schema was reconstructed into it from `DB data/schema.sql` + `Enum.json` (including the live
+`products_chiller_gate_check` that `schema.sql` omits, and a reproduction of the audit trigger on
+`projects` that demands `app.user_id`), and all four migrations were applied — **each as a single
+transaction, the way the Supabase SQL editor runs a file**.
+
+Then **51 assertions** ran against the result, covering the edge cases in §6 and §9: the full
+3-chillers-and-4-pumps scenario end to end, every CHECK constraint, the composite family FK, the
+Chiller gate, the zero-line project, blank notes, the note-less review request, the duplicate
+review request, the self-request, the soft-deleted note, the fan-out dedupe, the terminal-status
+guard, the analytics rules, and the two-session race. All 51 pass.
+
+The harness is committed alongside the migrations in `DB data/migrations/_test/` so it can be
+re-run after any change to them.
+
+### Three real bugs the test run found
+
+1. **`awarded_quantity` was silently discarded.** Setting it on a line that was not won passed
+   without error, because the BEFORE trigger nulled the value before the CHECK could see it — so the
+   API would have returned 200 having dropped the number. The trigger now distinguishes a *transition*
+   out of `won` (clear it, silently, as intended) from an explicit *write* onto a non-won line
+   (raise). Edge case 29 only became true after this fix.
+2. **The fan-out trigger would not insert.** `'review_requested'` in an `INSERT … SELECT` is untyped
+   text, and PostgreSQL will not implicitly cast text to an enum in that position. Every review
+   request would have failed at runtime. Needed an explicit `::notification_type`.
+3. **The contractor-lost-tender path wrote a status transition that never happened.** It killed the
+   open lines first, which fired the roll-up while the project was still live — recording a move into
+   `partiallyWon`, immediately followed by the real move to `withDifferentContractor`. Two rows in the
+   audit trail, one of them a fiction. The function now sets the terminal status *first*, so the
+   roll-up's own terminal guard swallows the line updates and the history gets one honest row.
+
+### One thing I had documented wrongly
+
+The earlier draft warned that `ALTER TYPE … ADD VALUE` had to be run on its own, separately from the
+rest of the file. Tested: it does not. Adding an enum value inside a transaction has been legal since
+PostgreSQL 12, and the "cannot use it yet" rule only applies to a statement that *evaluates* the new
+literal — here both new values appear only inside PL/pgSQL function bodies, resolved at call time.
+The whole file runs in one transaction and the roll-up then produces `partiallyWon` correctly. The
+warning has been replaced with the accurate version, including the one edit that would reintroduce
+the problem (adding a backfill that writes the new value directly).
+
+### Not covered by the harness
+
+- **RLS policies.** The ones in these files are baseline "any authenticated employee" policies. The
+  live policies on `projects` are not in `schema.sql`, so they could not be replicated or compared.
+  Read the RLS block in each file before running it — a line is exactly as sensitive as the project
+  it hangs off, and if `projects` is narrower than this, these need to match.
+- **The `awarded_quantity` ownership rule** — that only the project's own `sales_eng_id` may edit
+  it. That one lives in the API layer, not the database (edge case 32).
+- **Live Supabase.** The sandbox cannot open a raw Postgres connection through the proxy, so this
+  ran against a reconstruction, not the real database.
